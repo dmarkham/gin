@@ -12,6 +12,7 @@ import (
 	"mime/multipart"
 	"net"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"os"
 	"strings"
@@ -537,7 +538,7 @@ func (c *Context) IsWebsocket() bool {
 }
 
 func (c *Context) requestHeader(key string) string {
-	if values, _ := c.Request.Header[key]; len(values) > 0 {
+	if values, _ := c.Request.Header[textproto.CanonicalMIMEHeaderKey(key)]; len(values) > 0 {
 		return values[0]
 	}
 	return ""
