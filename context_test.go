@@ -16,6 +16,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1812,6 +1813,53 @@ func TestContextResetInHandler(t *testing.T) {
 	assert.NotPanics(t, func() {
 		c.Next()
 	})
+}
+
+func TestRaceParamsContextCopy2WaitGroup(t *testing.T) {
+	DefaultWriter = os.Stdout
+	router := Default()
+	var mainWg sync.WaitGroup
+	var name1Wg sync.WaitGroup
+	mainWg.Add(1)
+	name1Wg.Add(1)
+	nameGroup := router.Group("/:name")
+	{
+		nameGroup.GET("/api", func(c *Context) {
+			go func(c *Context, param string) {
+				if param == "name1" {
+					name1Wg.Wait()
+				}
+				assert.Equal(t, c.Param("name"), param)
+				if param == "name2" {
+					name1Wg.Done()
+				} else {
+					mainWg.Done()
+				}
+			}(c.Copy(), c.Param("name"))
+		})
+	}
+	performRequest(router, "GET", "/name1/api")
+	performRequest(router, "GET", "/name2/api")
+	mainWg.Wait()
+}
+
+func TestRaceParamsContextCopyWaitGroup(t *testing.T) {
+	DefaultWriter = os.Stdout
+	router := Default()
+	nameGroup := router.Group("/:name")
+	var wg sync.WaitGroup
+	{
+		nameGroup.GET("/api", func(c *Context) {
+			wg.Add(1)
+			go func(c *Context, param string) {
+				defer wg.Done()
+				assert.Equal(t, c.Param("name"), param)
+			}(c.Copy(), c.Param("name"))
+		})
+	}
+	performRequest(router, "GET", "/name1/api")
+	performRequest(router, "GET", "/name2/api")
+	wg.Wait()
 }
 
 func TestRaceParamsContextCopy(t *testing.T) {
